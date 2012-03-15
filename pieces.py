@@ -1,3 +1,5 @@
+# This Python file uses the following encoding: utf-8
+
 from piece import Piece
 from direction import Direction
 
@@ -17,29 +19,47 @@ class Rook(Piece):
 class Pawn(Piece):
   name = 'pawn'
   character = 'p'
-  length = 1
+  length = 2
   move_directions = [
-    Direction(0, 1),
-    Direction(0, 2)
+    Direction(0, 1)
   ]
   attack_directions = [
     Direction(1, 1),
     Direction(-1, 1)
   ]
   
+  def __init__(self, *arguments):
+    Piece.__init__(self, *arguments)
+    
+    if self.position.y != (3.5 - 2.5 * self.color_int):
+      self.has_moved = True
+      self.length = 1
+  
+  def move(self, move):
+    del self.board[self.position]
+    
+    self.position = move
+    self.board[move] = self
+    
+    self.has_moved = True
+    self.length = 1
+  
+  def moves(self):
+    return self.get_moves(self.move_directions, self.length)
+  
   def attacks(self):
-    return self.get_attacks(self.attack_directions, self.length)
+    return self.get_attacks(self.attack_directions, 1)
   
   def get_moves(self, move_directions, length):
     moves = []
     
     for move in move_directions:
+      test_move = Direction(move.x, move.y * self.color_int)
       position = self.position.copy()
       total_length = 0
       
       while total_length < length:
-        move.y *= self.color_int
-        position += move
+        position += test_move
         total_length += 1
         
         if position.in_bounds():
@@ -58,12 +78,12 @@ class Pawn(Piece):
     attacks = []
     
     for move in move_directions:
+      test_move = Direction(move.x, move.y * self.color_int)
       position = self.position.copy()
       total_length = 0
       
       while total_length < length:
-        move.y *= self.color_int
-        position += move
+        position += test_move
         total_length += 1
         
         if position.in_bounds():
@@ -96,6 +116,21 @@ class King(Piece):
     Direction(1, 1)
   ]
   
+  def in_check(self):
+    for piece in self.enemies():
+      if self.position in piece.attacks():
+        return True
+    
+    return False
+  
+  def checking_pieces(self):
+    pieces = []
+    
+    for piece in self.enemies():
+      if self.position in piece.attacks():
+        pieces.append(piece)
+    
+    return pieces
 
 
 class Knight(Piece):

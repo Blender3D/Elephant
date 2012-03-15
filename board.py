@@ -9,11 +9,9 @@ class Board(object):
     
     self.board = []
     
-    self.pieces = []
-    self.white_pieces = []
-    self.black_pieces = []
-    
     self.whites_turn = True
+    self.white_king = None
+    self.black_king = None
     
     if not state:
       self.loadState('''
@@ -42,7 +40,6 @@ class Board(object):
     else:
       raise ValueError('Invalid board coordinate')
   
-  
   def __setitem__(self, key, value):
     if type(key) == int:
       self.board[key] = value
@@ -53,6 +50,35 @@ class Board(object):
     else:
       raise ValueError('Invalid board coordinate')
   
+  def __delitem__(self, key):
+    if type(key) == int:
+      self.board[key] = None
+    elif type(key) == tuple:
+      self.board[key[1]][key[0]] = None
+    elif type(key) == Point:
+      self.board[key.y][key.x] = None
+    else:
+      raise ValueError('Invalid board coordinate')
+  
+  def white_pieces(self):
+    pieces = []
+    
+    for row in self.board:
+      for piece in row:
+        if piece and piece.color:
+          pieces.append(piece)
+    
+    return pieces
+  
+  def black_pieces(self):
+    pieces = []
+    
+    for row in self.board:
+      for piece in row:
+        if piece and piece.color == False:
+          pieces.append(piece)
+    
+    return pieces
   
   def loadState(self, state):
     state = re.split('\n+', re.sub(r'[^prnbqkPRNBQK\.\n]', '', state.strip()))
@@ -69,19 +95,26 @@ class Board(object):
         else:
           for piece in [Rook, Pawn, King, Knight, Bishop, Queen]:
             if piece.character == square.lower():
-              obj = piece(self, not square.islower(), Point(x, y))
+              color = not square.islower()
+              new_row += [piece(self, color, Point(x, y))]
               
-              new_row += [obj]
-              self.pieces += [obj]
-              
-              if not square.islower():
-                self.white_pieces += [obj]
-              else:
-                self.black_pieces += [obj]
+              if piece == King:
+                if color:
+                  self.white_king = new_row[-1]
+                else:
+                  self.black_king = new_row[-1]
               
               break
       
       board += [new_row]
+    
+    for row in board:
+      for piece in row:
+        if piece:
+          if piece.color:
+            piece.king = self.white_king
+          else:
+            piece.king = self.black_king
     
     self.board = board
   

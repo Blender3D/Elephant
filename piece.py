@@ -12,7 +12,23 @@ class Piece(object):
     self.is_pinned = False
     self.board = board
     
+    self.friends = self.board.white_pieces if self.color else self.board.black_pieces
+    self.enemies = self.board.black_pieces if self.color else self.board.white_pieces
+    
     self.position = position
+  
+  def valid_moves(self):
+    moves = self.moves() + self.attacks()
+    valid_moves = []
+    
+    for move in moves:
+      test_board = self.board.copy()
+      test_board[self.position].move(move)
+      
+      if not test_board[move].king.in_check():
+        valid_moves.append(move)
+    
+    return valid_moves
   
   def moves(self):
     return self.get_moves(self.move_directions, self.length)
@@ -96,36 +112,12 @@ class Piece(object):
     
     return character
   
-  def can_move(self, x, y):
-    if self.x == x and self.y == y:
-      return False
+  def move(self, move):
+    self.has_moved = True
+    del self.board[self.position]
     
-    if not self.is_valid((x, y)):
-      return False
-    
-    target = self.board[x, y]
-    
-    if target and target.color == self.color:
-      return False
-    
-    if (x, y) in self.attacks() and self.board[x, y]:
-      return True
-    elif (x, y) in self.moves() and not self.board[x, y]:
-      return True
-    else:
-      return False
-  
-  def move(self, x, y):
-    if self.can_move(x, y):
-      self.board[x, y] = self
-      self.board[self.x, self.y] = None
-      
-      self.x = x
-      self.y = y
-      
-      return True
-    else:
-      return False
+    self.position = move
+    self.board[move] = self
   
   def __eq__(self, other):
     return self.letter().lower() == other.letter().lower() if other else False
