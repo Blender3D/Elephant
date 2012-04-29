@@ -1,9 +1,570 @@
 import re, sys, random
-
-from board import Board
-from point import Point
 from colorama import init, Style, Fore
 init()
+
+class Point(object):
+  def __init__(self, x=None, y=None):
+    self.x = x
+    self.y = y
+  
+  def in_bounds(self):
+    return 0 <= self.x <= 7 and 0 <= self.y <= 7
+  
+  def copy(self):
+    return Point(self.x, self.y)
+  
+  def __add__(self, other):
+    return Point(self.x + other.x, self.y + other.y)
+  
+  def __sub__(self, other):
+    return Point(self.x - other.x, self.y - other.y)
+  
+  def __eq__(self, other):
+    return self.x == other.x and self.y == other.y
+  
+  def __ne__(self, other):
+    return self.x != other.x or self.y != other.y
+  
+  def __str__(self):
+    return 'Point ({x}, {y})'.format(
+      x=self.x,
+      y=self.y
+    )
+
+
+
+class Direction(object):
+  def __init__(self, x=None, y=None):
+    self.x = x
+    self.y = y
+  
+  def copy(self):
+    return Direction(self.x, self.y)
+  
+  def flip_y(self):
+    return Direction(self.x, -self.y)
+  
+  def flip_x(self):
+    return Direction(-self.x, self.y)
+  
+  def __add__(self, other):
+    return Direction(self.x + other.x, self.y + other.y)
+  
+  def __sub__(self, other):
+    return Direction(self.x - other.x, self.y - other.y)
+  
+  def __eq__(self, other):
+    return self.x == other.x and self.y == other.y
+  
+  def __ne__(self, other):
+    return self.x != other.x or self.y != other.y
+  
+  def __str__(self):
+    return 'Direction <{x}, {y}>'.format(
+      x=self.x,
+      y=self.y
+    )
+
+
+
+class Move(object):
+  def __init__(self, origin=Point(), target=Point(), category='normal'):
+    self.category = category
+    self.origin = origin
+    self.target = target
+
+
+class Piece(object):
+  def __init__(self, board=None, color=True, position=Point()):
+    self.color = color
+    self.color_int = -1 if self.color else 1
+    
+    self.has_moved = False
+    self.is_pinned = False
+    self.board = board
+    
+    self.friends = self.board.white_pieces if self.color else self.board.black_pieces
+    self.enemies = self.board.black_pieces if self.color else self.board.white_pieces
+    
+    self.position = position
+  
+  def valid_moves(self):
+    moves = self.moves() + self.attacks()
+    valid_moves = []
+    
+    for move in moves:
+      test_board = self.board.copy()
+      test_board[self.position].move(move)
+      
+      if not test_board[move].king.in_check():
+        valid_moves.append(move)
+    
+    return valid_moves
+  
+  def moves(self):
+    return self.get_moves(self.move_directions, self.length)
+  
+  def attacks(self):
+    return self.get_attacks(self.move_directions, self.length)
+  
+  def __str__(self):
+    return '{color} {piece} at ({x}, {y})'.format(
+      color='white' if self.color else 'black',
+      piece=self.name,
+      x=self.position.x,
+      y=self.position.y
+    )
+  
+  def get_moves(self, move_directions, length):
+    moves = []
+    
+    for move in move_directions:
+      position = self.position.copy()
+      total_length = 0
+      
+      while total_length < length:
+        position += move
+        total_length += 1
+        
+        if position.in_bounds():
+          square = self.board[position]
+          
+          if square:
+            break
+          else:
+            moves.append(Move(self.position, position))
+        else:
+          break
+    
+    return moves
+  
+  def get_attacks(self, move_directions, length):
+    attacks = []
+    
+    for move in move_directions:
+      position = self.position.copy()
+      total_length = 0
+      
+      while total_length < length:
+        position += move
+        total_length += 1
+        
+        if position.in_bounds():
+          square = self.board[position]
+          
+          if square:
+            if square.color != self.color:
+              attacks.append(Move(self.position, position))
+            
+            break
+        else:
+          break
+    
+    return attacks
+  
+  def draw_moves(self):
+    temp_board = self.board.copy()
+    
+    temp_board[self.position] = Fore.GREEN + self.letter() + Style.RESET_ALL
+    
+    for move in self.moves():
+      temp_board[move.target] = Fore.YELLOW + '*' + Style.RESET_ALL
+    
+    for attack in self.attacks():
+      temp_board[attack.target] = Fore.RED + temp_board[attack].letter() + Style.RESET_ALL
+    
+    return str(temp_board)
+  
+  def letter(self):
+    character = self.character.upper() if self.color else self.character
+    
+    if self.color:
+      character = Style.BRIGHT + character + Style.RESET_ALL
+    
+    return character
+  
+  def move(self, move):
+    self.has_moved = True
+    del self.board[self.position]
+    
+    self.position = move.target
+    
+    self.board[move] = self
+  
+  def __eq__(self, other):
+    return self.letter().lower() == other.letter().lower() if other else False
+  
+  def __ne__(self, other):
+    return self.letter().lower() != other.letter().lower() if other else False
+
+
+
+class Rook(Piece):
+  name = 'rook'
+  character = 'r'
+  length = 8
+  move_directions = [
+    Direction(0, 1),
+    Direction(0, -1),
+    Direction(-1, 0),
+    Direction(1, 0)
+  ]
+
+
+
+class Pawn(Piece):
+  name = 'pawn'
+  character = 'p'
+  length = 2
+  move_directions = [
+    Direction(0, 1)
+  ]
+  attack_directions = [
+    Direction(1, 1),
+    Direction(-1, 1)
+  ]
+  
+  def __init__(self, *arguments):
+    Piece.__init__(self, *arguments)
+    
+    if self.position.y != (3.5 - 2.5 * self.color_int):
+      self.has_moved = True
+      self.length = 1
+  
+  def move(self, move):
+    del self.board[self.position]
+    
+    self.position = move.target
+    self.board[move] = self
+    
+    if move.category.startswith('promote_'):
+      self.board.promote(self, eval(move.category[8:].title()))
+    
+    self.has_moved = True
+    self.length = 1
+  
+  def moves(self):
+    moves = self.get_moves(self.move_directions, self.length)
+    
+    for move in moves[:]:
+      if move.target.y in [0, 7]:
+        for piece in ['queen', 'rook', 'bishop', 'knight']:
+          moves.append(Move(self.position, move.target, 'promote_{}'.format(piece)))
+    
+    return moves
+  
+  def attacks(self):
+    return self.get_attacks(self.attack_directions, 1)
+  
+  def get_moves(self, move_directions, length):
+    moves = []
+    
+    for move in move_directions:
+      test_move = Direction(move.x, move.y * self.color_int)
+      position = self.position.copy()
+      total_length = 0
+      
+      while total_length < length:
+        position += test_move
+        total_length += 1
+        
+        if position.in_bounds():
+          square = self.board[position]
+          
+          if square:
+            break
+          else:
+            moves.append(Move(self.position, position))
+        else:
+          break
+    
+    return moves
+  
+  def get_attacks(self, move_directions, length):
+    attacks = []
+    
+    for move in move_directions:
+      test_move = Direction(move.x, move.y * self.color_int)
+      position = self.position.copy()
+      total_length = 0
+      
+      while total_length < length:
+        position += test_move
+        total_length += 1
+        
+        if position.in_bounds():
+          square = self.board[position]
+          
+          if square:
+            if square.color != self.color:
+              attacks.append(Move(self.position, position))
+            
+            break
+        else:
+          break
+    
+    return attacks
+  
+
+
+class King(Piece):
+  name = 'king'
+  character = 'k'
+  length = 1
+  move_directions = [
+    Direction(0, 1),
+    Direction(0, -1),
+    Direction(-1, 0),
+    Direction(-1, -1),
+    Direction(-1, 1),
+    Direction(1, 0),
+    Direction(1, -1),
+    Direction(1, 1)
+  ]
+  
+  def in_check(self):
+    for piece in self.enemies():
+      if self.position in map(lambda move: move.target, piece.attacks()):
+        return True
+    
+    return False
+  
+  def checking_pieces(self):
+    pieces = []
+    
+    for piece in self.enemies():
+      if self.position in map(lambda move: move.target, piece.attacks()):
+        pieces.append(piece)
+    
+    return pieces
+
+
+class Knight(Piece):
+  name='knight'
+  character='n'
+  length = 1
+  move_directions = [
+    Direction(1, 2),
+    Direction(1, -2),
+    Direction(-1, 2),
+    Direction(-1, -2),
+    Direction(2, 1),
+    Direction(2, -1),
+    Direction(-2, 1),
+    Direction(-2, -1)
+  ]
+  
+
+
+class Bishop(Piece):
+  name='bishop'
+  character='b'
+  length = 8
+  move_directions = [
+    Direction(-1, -1),
+    Direction(-1, 1),
+    Direction(1, -1),
+    Direction(1, 1)
+  ]
+  
+
+
+class Queen(Piece):
+  name='queen'
+  character='q'
+  length = 8
+  move_directions = [
+    Direction(0, 1),
+    Direction(0, -1),
+    Direction(-1, 0),
+    Direction(-1, -1),
+    Direction(-1, 1),
+    Direction(1, 0),
+    Direction(1, -1),
+    Direction(1, 1)
+  ]
+
+
+
+class Board(object):
+  def __init__(self, state=None):
+    self.width = 8
+    self.height = 8
+    
+    self.board = []
+    
+    self.whites_turn = True
+    self.white_king = None
+    self.black_king = None
+    
+    if not state:
+      self.load_state('''
+        r n b q k b n r
+        p p p p p p p p
+        . . . . . . . .
+        . . . . . . . .
+        . . . . . . . .
+        . . . . . . . .
+        P P P P P P P P
+        R N B Q K B N R
+      ''')
+    else:
+      self.load_state(state)
+  
+  def copy(self):
+    return Board(str(self))
+  
+  def __getitem__(self, key):
+    if type(key) == int:
+      return self.board[key]
+    elif type(key) == tuple:
+      return self.board[key[1]][key[0]]
+    elif type(key) == Point:
+      return self.board[key.y][key.x]
+    elif type(key) == Move:
+      return self.board[key.target.y][key.target.x]
+    else:
+      raise ValueError('Invalid board coordinate')
+  
+  def __setitem__(self, key, value):
+    if type(key) == int:
+      self.board[key] = value
+    elif type(key) == tuple:
+      self.board[key[1]][key[0]] = value
+    elif type(key) == Point:
+      self.board[key.y][key.x] = value
+    elif type(key) == Move:
+      self.board[key.target.y][key.target.x] = value
+    else:
+      raise ValueError('Invalid board coordinate')
+  
+  def __delitem__(self, key):
+    if type(key) == int:
+      self.board[key] = None
+    elif type(key) == tuple:
+      self.board[key[1]][key[0]] = None
+    elif type(key) == Point:
+      self.board[key.y][key.x] = None
+    elif type(key) == Move:
+      self.board[key.target.y][key.target.x] = None
+    else:
+      raise ValueError('Invalid board coordinate')
+  
+  def promote(self, pawn, piece):
+    self[pawn.position] = piece(pawn.board, pawn.color, pawn.position)
+    self[pawn.position].king = pawn.king
+  
+  def white_pieces(self):
+    pieces = []
+    
+    for row in self.board:
+      for piece in row:
+        if piece and piece.color:
+          pieces.append(piece)
+    
+    return pieces
+  
+  def black_pieces(self):
+    pieces = []
+    
+    for row in self.board:
+      for piece in row:
+        if piece and piece.color == False:
+          pieces.append(piece)
+    
+    return pieces
+  
+  def load_state(self, state):
+    state = re.split('\n+', re.sub(r'[^prnbqkPRNBQK\.\n]', '', state.strip()))
+    self.state = state
+    
+    board = []
+    
+    for y, row in enumerate(state):
+      new_row = []
+      
+      for x, square in enumerate(row):
+        if square == '.':
+          new_row += [None]
+        else:
+          for piece in [Rook, Pawn, King, Knight, Bishop, Queen]:
+            if piece.character == square.lower():
+              color = not square.islower()
+              new_row += [piece(self, color, Point(x, y))]
+              
+              if piece == King:
+                if color:
+                  self.white_king = new_row[-1]
+                else:
+                  self.black_king = new_row[-1]
+              
+              break
+      
+      board += [new_row]
+    
+    for row in board:
+      for piece in row:
+        if piece:
+          if piece.color:
+            piece.king = self.white_king
+          else:
+            piece.king = self.black_king
+    
+    self.board = board
+  
+  def pieces(self):
+    result = []
+    
+    for row in self.board:
+      for square in row:
+        if square:
+          result.append(square)
+    
+    return result
+  
+  def white_pieces(self):
+    result = []
+    
+    for piece in self.pieces():
+      if piece.color == True:
+        result.append(piece)
+    
+    return result
+  
+  def black_pieces(self):
+    result = []
+    
+    for piece in self.pieces():
+      if piece.color == False:
+        result.append(piece)
+    
+    return result
+  
+  def __str__(self):
+    result = []
+    
+    for row in self.board:
+      temp_row = []
+      
+      for cell in row:
+        if cell == None:
+          temp_row += ['.']
+        elif type(cell) == str:
+          temp_row += [cell]
+        else:
+          temp_row += [cell.letter()]
+      
+      result += [' '.join(temp_row)]
+    
+    return '\n'.join(result)
+  
+  def is_stalemate(self):
+    pieces = self.pieces()
+    
+    if len(pieces) == 2:
+      return True
+    else:
+      return False
 
 
 def ask_move():
@@ -38,6 +599,7 @@ if __name__ == '__main__':
       if moves:
         can_move = True
         piece.move(random.choice(moves))
+        raw_input()
         break
     
     if not can_move:
@@ -51,6 +613,10 @@ if __name__ == '__main__':
       if attacker:
         sys.exit(attacker[0].draw_moves())
       else:
+        sys.exit('STALEMATE')
+    else:
+      if board.is_stalemate():
+        print board
         sys.exit('STALEMATE')
     
     board.whites_turn = not board.whites_turn
