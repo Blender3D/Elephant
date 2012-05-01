@@ -196,6 +196,7 @@ class Piece(object):
     self.position = move.target
     
     self.board[move] = self
+    self.board.last_moved_piece = self
   
   def __eq__(self, other):
     return self.letter().lower() == other.letter().lower() if other else False
@@ -234,6 +235,8 @@ class Pawn(Piece):
   
   def __init__(self, *arguments):
     Piece.__init__(self, *arguments)
+
+    self.last_move = None
     
     if self.position.y != (3.5 - 2.5 * self.color_int):
       self.has_moved = True
@@ -247,8 +250,15 @@ class Pawn(Piece):
     self.position = move.target
     self.board[move] = self
     
-    if move.category.startswith('promote_'):
-      self.board.promote(self, eval(move.category[8:].title()))
+    if move.category.startswith('promote to '):
+      self.board.promote(self, eval(move.category[11:].title()))
+
+    self.board.last_moved_piece = self.board[move]
+
+    if not self.has_moved and self.position.y == 3.5 - 0.5 * self.color_int:
+      self.last_move = 'double jump'
+    else:
+      self.last_move = None
     
     self.has_moved = True
     self.length = 1
@@ -256,11 +266,18 @@ class Pawn(Piece):
   def moves(self):
     moves = self.get_moves(self.move_directions, self.length)
     adjusted_moves = []
+
+    last_piece = self.board.last_moved_piece
+
+    if type(last_piece) == Pawn:
+      if last_piece.last_move == 'double jump':
+        if last_piece.position.y == self.position.y and abs(last_piece.position.x - self.position.x) == 1:
+          moves.append(Move(self.position, self.position + Direction(last_piece.position.x - self.position.x, self.color_int), 'en passant'))
     
     for move in moves[:]:
       if move.target.y in [0, 7]:
         for piece in ['queen', 'rook', 'bishop', 'knight']:
-          adjusted_moves.append(Move(self.position, move.target, 'promote_{0}'.format(piece)))
+          adjusted_moves.append(Move(self.position, move.target, 'promote to {0}'.format(piece)))
       else:
         adjusted_moves.append(move)
     
@@ -287,7 +304,7 @@ class Pawn(Piece):
           if square:
             break
           else:
-            moves.append(Move(self.position, position))
+            moves.append(Move(self.position, position, 'double jump' if move.y == 2 else 'normal'))
         else:
           break
     
@@ -446,6 +463,7 @@ class Board(object):
     self.white_king = None
     self.black_king = None
 
+    self.last_moved_piece = None
     self.fifty_move_rule_count = 0
     
     if not state:
@@ -526,6 +544,8 @@ class Board(object):
     return pieces
   
   def evaluate(self, side=True):
+    return 1
+    
     opponent_king, king = (self.black_king, self.white_king) if side else (self.white_king, self.black_king)
     enemies, allies = (self.black_pieces(), self.white_pieces()) if side else (self.white_pieces(), self.black_pieces())
     
@@ -658,14 +678,14 @@ def ask_move():
 if __name__ == '__main__':
   depth = 1
   board = Board('''
-    r n b q k b n r
-    p p p p p p p p
+    k . . . . . . .
+    . p . p . p . p
+    . . . . . . . .
+    P . P . P . P .
     . . . . . . . .
     . . . . . . . .
     . . . . . . . .
-    . . . . . . . .
-    P P P P P P P P
-    R N B Q K B N R
+    K . . . . . . .
   ''')
   
   while True:
