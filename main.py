@@ -544,8 +544,6 @@ class Board(object):
     return pieces
   
   def evaluate(self, side=True):
-    return 1
-    
     opponent_king, king = (self.black_king, self.white_king) if side else (self.white_king, self.black_king)
     enemies, allies = (self.black_pieces(), self.white_pieces()) if side else (self.white_pieces(), self.black_pieces())
     
@@ -678,14 +676,14 @@ def ask_move():
 if __name__ == '__main__':
   depth = 1
   board = Board('''
-    k . . . . . . .
-    . p . p . p . p
-    . . . . . . . .
-    P . P . P . P .
+    r n b q k b n r
+    p p p p p p p p
     . . . . . . . .
     . . . . . . . .
     . . . . . . . .
-    K . . . . . . .
+    . . . . . . . .
+    P P P P P P P P
+    R N B Q K B N R
   ''')
   
   while True:
