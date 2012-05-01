@@ -185,6 +185,12 @@ class Piece(object):
   
   def move(self, move):
     self.has_moved = True
+
+    if type(self.board[self.position]) == Pawn:
+      self.board.fifty_move_rule_count = 0
+    else:
+      self.board.fifty_move_rule_count += 0.5
+    
     del self.board[self.position]
     
     self.position = move.target
@@ -203,6 +209,7 @@ class Rook(Piece):
   name = 'rook'
   character = 'r'
   length = 8
+  value = 5.0
   move_directions = [
     Direction(0, 1),
     Direction(0, -1),
@@ -216,6 +223,7 @@ class Pawn(Piece):
   name = 'pawn'
   character = 'p'
   length = 2
+  value = 1.0
   move_directions = [
     Direction(0, 1)
   ]
@@ -232,6 +240,8 @@ class Pawn(Piece):
       self.length = 1
   
   def move(self, move):
+    self.board.fifty_move_rule_count = 0
+    
     del self.board[self.position]
     
     self.position = move.target
@@ -245,13 +255,16 @@ class Pawn(Piece):
   
   def moves(self):
     moves = self.get_moves(self.move_directions, self.length)
+    adjusted_moves = []
     
     for move in moves[:]:
       if move.target.y in [0, 7]:
         for piece in ['queen', 'rook', 'bishop', 'knight']:
-          moves.append(Move(self.position, move.target, 'promote_{}'.format(piece)))
+          adjusted_moves.append(Move(self.position, move.target, 'promote_{0}'.format(piece)))
+      else:
+        adjusted_moves.append(move)
     
-    return moves
+    return adjusted_moves
   
   def attacks(self):
     return self.get_attacks(self.attack_directions, 1)
@@ -311,6 +324,7 @@ class King(Piece):
   name = 'king'
   character = 'k'
   length = 1
+  value = 0.0
   move_directions = [
     Direction(0, 1),
     Direction(0, -1),
@@ -321,6 +335,19 @@ class King(Piece):
     Direction(1, -1),
     Direction(1, 1)
   ]
+  
+  def can_move(self):
+    if self.valid_moves():
+      return True
+    
+    for piece in self.friends():
+      if piece.valid_moves():
+        return True
+
+    return False
+  
+  def in_checkmate(self):
+    return self.in_check() and not self.can_move()
   
   def in_check(self):
     for piece in self.enemies():
@@ -338,11 +365,31 @@ class King(Piece):
     
     return pieces
 
+  def can_checkmate(self):
+    pieces = map(lambda piece: type(piece), self.friends())
+
+    if len(pieces) == 1:
+      return False
+    elif len(pieces) == 2:
+      if Knight in pieces or Bishop in pieces:
+        return False
+      else:
+        return True
+    elif len(pieces) == 3:
+      if pieces.count(Knight) == 2:
+        return False
+      else:
+        return True
+    else:
+      return True
+
+
 
 class Knight(Piece):
   name='knight'
   character='n'
   length = 1
+  value = 3.0
   move_directions = [
     Direction(1, 2),
     Direction(1, -2),
@@ -360,6 +407,7 @@ class Bishop(Piece):
   name='bishop'
   character='b'
   length = 8
+  value = 3.0
   move_directions = [
     Direction(-1, -1),
     Direction(-1, 1),
@@ -373,6 +421,7 @@ class Queen(Piece):
   name='queen'
   character='q'
   length = 8
+  value = 9.0
   move_directions = [
     Direction(0, 1),
     Direction(0, -1),
@@ -396,6 +445,8 @@ class Board(object):
     self.whites_turn = True
     self.white_king = None
     self.black_king = None
+
+    self.fifty_move_rule_count = 0
     
     if not state:
       self.load_state('''
@@ -473,6 +524,24 @@ class Board(object):
           pieces.append(piece)
     
     return pieces
+  
+  def evaluate(self, side=True):
+    opponent_king, king = (self.black_king, self.white_king) if side else (self.white_king, self.black_king)
+    enemies, allies = (self.black_pieces(), self.white_pieces()) if side else (self.white_pieces(), self.black_pieces())
+    
+    if opponent_king.in_checkmate():
+      return 10000
+    
+    value = 0
+    
+    for piece in allies:
+      value += piece.value
+    
+    for piece in enemies:
+      value -= piece.value
+    
+    return value
+    
   
   def load_state(self, state):
     state = re.split('\n+', re.sub(r'[^prnbqkPRNBQK\.\n]', '', state.strip()))
@@ -559,12 +628,25 @@ class Board(object):
     return '\n'.join(result)
   
   def is_stalemate(self):
-    pieces = self.pieces()
+    current_side = self.white_pieces() if self.whites_turn else self.black_pieces()
+    current_king = self.white_king if self.whites_turn else self.black_king
     
-    if len(pieces) == 2:
-      return True
-    else:
-      return False
+    if current_king.in_check():
+      return False, ''
+
+    if not self.white_king.can_checkmate() and not self.black_king.can_checkmate():
+      return True, 'No kings can checkmate'
+    
+    if self.fifty_move_rule_count >= 50:
+      return True, 'Fifty move rule'
+    
+    for piece in current_side:
+      if piece.valid_moves():
+        return False, ''
+    
+    return True, 'The king is trapped but not in check'
+    
+      
 
 
 def ask_move():
@@ -574,6 +656,7 @@ def ask_move():
 
 
 if __name__ == '__main__':
+  depth = 1
   board = Board('''
     r n b q k b n r
     p p p p p p p p
@@ -587,6 +670,11 @@ if __name__ == '__main__':
   
   while True:
     can_move = False
+    best_move = (None, None, None)
+    
+    if board.is_stalemate()[0]:
+      print board
+      sys.exit('STALEMATE: {0}'.format(board.is_stalemate()[1]))
     
     pieces = board.white_pieces() if board.whites_turn else board.black_pieces()
     random.shuffle(pieces)
@@ -595,28 +683,32 @@ if __name__ == '__main__':
     
     for piece in pieces:
       moves = piece.valid_moves()
+      random.shuffle(moves)
       
-      if moves:
-        can_move = True
-        piece.move(random.choice(moves))
-        raw_input()
-        break
+      for move in moves:
+        test_board = board.copy()
+        test_board[piece.position].move(move)
+        
+        evaluation = test_board.evaluate(board.whites_turn)
+        
+        if best_move[0] is not None:
+          if best_move[0] < evaluation:
+            best_move = evaluation, piece, move
+        else:
+          best_move = evaluation, piece, move
     
-    if not can_move:
+    if best_move[0] is not None:
+      best_move[1].move(best_move[2])
+      raw_input()
+    else:
       if board.whites_turn:
         king = board.white_king
       else:
         king = board.black_king
       
-      attacker = king.checking_pieces()
+      attacker = king.checking_pieces()[0]
       
-      if attacker:
-        sys.exit(attacker[0].draw_moves())
-      else:
-        sys.exit('STALEMATE')
-    else:
-      if board.is_stalemate():
-        print board
-        sys.exit('STALEMATE')
-    
+      print 'CHECKMATE'
+      sys.exit(attacker.draw_moves())
+      
     board.whites_turn = not board.whites_turn
