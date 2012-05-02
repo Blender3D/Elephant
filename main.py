@@ -198,6 +198,9 @@ class Piece(object):
     self.board[move] = self
     self.board.last_moved_piece = self
   
+  def mobility(self):
+    return len(self.valid_moves()) / self.max_squares
+  
   def __eq__(self, other):
     return self.letter().lower() == other.letter().lower() if other else False
   
@@ -211,6 +214,7 @@ class Rook(Piece):
   character = 'r'
   length = 8
   value = 5.0
+  max_squares = 14.0
   move_directions = [
     Direction(0, 1),
     Direction(0, -1),
@@ -225,6 +229,7 @@ class Pawn(Piece):
   character = 'p'
   length = 2
   value = 1.0
+  max_squares = 1.0
   move_directions = [
     Direction(0, 1)
   ]
@@ -342,6 +347,7 @@ class King(Piece):
   character = 'k'
   length = 1
   value = 0.0
+  max_squares = 8.0
   move_directions = [
     Direction(0, 1),
     Direction(0, -1),
@@ -407,6 +413,7 @@ class Knight(Piece):
   character='n'
   length = 1
   value = 3.0
+  max_squares = 8.0
   move_directions = [
     Direction(1, 2),
     Direction(1, -2),
@@ -425,6 +432,7 @@ class Bishop(Piece):
   character='b'
   length = 8
   value = 3.0
+  max_squares = 13.0
   move_directions = [
     Direction(-1, -1),
     Direction(-1, 1),
@@ -439,6 +447,7 @@ class Queen(Piece):
   character='q'
   length = 8
   value = 9.0
+  max_squares = 27.0
   move_directions = [
     Direction(0, 1),
     Direction(0, -1),
@@ -543,22 +552,38 @@ class Board(object):
     
     return pieces
   
-  def evaluate(self, side=True):
+  def best_move(self, side=True, max_depth=2):
+    opponent_king, king = (self.black_king, self.white_king) if side else (self.white_king, self.black_king)
+    enemies, allies = (self.black_pieces(), self.white_pieces()) if side else (self.white_pieces(), self.black_pieces())
+    
+    move_map = {}
+    depth = 0
+
+    for piece in allies:
+      for move in piece.valid_moves():
+        temp_board = self.copy()
+        temp_board[piece.position].move(move)
+        move_map[move] = temp_board.evaluate(depth)
+  
+  def evaluate(self, side=True, previous=0.0, depth=1, max_depth=3):
+    if depth > max_depth:
+      return previous
+    
     opponent_king, king = (self.black_king, self.white_king) if side else (self.white_king, self.black_king)
     enemies, allies = (self.black_pieces(), self.white_pieces()) if side else (self.white_pieces(), self.black_pieces())
     
     if opponent_king.in_checkmate():
       return 10000
     
-    value = 0
+    value = 0.0
     
     for piece in allies:
-      value += piece.value
+      value += piece.value * piece.mobility()
     
     for piece in enemies:
-      value -= piece.value
+      value -= 0.5 * piece.value * piece.mobility()
     
-    return value
+    return previous + value# * 0.5 ** depth
     
   
   def load_state(self, state):
@@ -726,7 +751,7 @@ if __name__ == '__main__':
       
       attacker = king.checking_pieces()[0]
       
-      print 'CHECKMATE'
+      print 'CHECKMATE: {0} wins'.format('black' if board.whites_turn else 'white')
       sys.exit(attacker.draw_moves())
       
     board.whites_turn = not board.whites_turn
